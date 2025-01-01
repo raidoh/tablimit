@@ -3,11 +3,10 @@ var maxTabs;
 /*
 Update the browser when the number of tabs changes.
 Update the badge. Including text and color.
-Notify user, when too many tabs were opened.
+Notify user, when too many tabs were opened or approaching limit.
 */
 function updateCount(tabId, isOnRemoved) {
-  browser.tabs.query({})
-  .then((tabs) => {
+  browser.tabs.query({}).then((tabs) => {
     let length = tabs.length;
 
     if (tabId == undefined) {
@@ -17,27 +16,49 @@ function updateCount(tabId, isOnRemoved) {
 
     // onRemoved fires too early and the count is one too many.
     // see https://bugzilla.mozilla.org/show_bug.cgi?id=1396758
-    if (isOnRemoved && tabId && tabs.map((t) => { return t.id; }).includes(tabId)) {
+    if (
+      isOnRemoved &&
+      tabId &&
+      tabs
+        .map((t) => {
+          return t.id;
+        })
+        .includes(tabId)
+    ) {
       length--;
     }
+
     // Only limit number of tabs other than preferences
     isPreferencesWindow = tabId.title == null || tabId.title.includes("about");
-    isNewTabWindow = tabId.title != null && tabId.title.includes("about:newTab");
+    isNewTabWindow =
+      tabId.title != null && tabId.title.includes("about:newTab");
     // Do not block any about pages except for newTab. about:home and about:welcome are also blocked as they start an about:newTab page first.
     isBlockable = !isPreferencesWindow || isNewTabWindow;
+
+    // Check if approaching limit (3 tabs remaining)
+    if (!isOnRemoved && maxTabs - length === 3 && isBlockable) {
+      let content = `Warning: You can only open 3 more tabs before reaching your limit of ${maxTabs} tabs`;
+      browser.notifications.create({
+        type: "basic",
+        iconUrl: browser.runtime.getURL("icons/link-48.png"),
+        title: "Approaching Tab Limit",
+        message: content,
+      });
+    }
+
+    // Check if exceeded limit
     if (!isOnRemoved && length > maxTabs && isBlockable) {
       let content = `Max Tabs Limit: ${maxTabs}`;
       browser.notifications.create({
-        "type": "basic",
-        "iconUrl": browser.runtime.getURL("icons/link-48.png"),
-        "title": "Too many tabs opened",
-        "message": content
+        type: "basic",
+        iconUrl: browser.runtime.getURL("icons/link-48.png"),
+        title: "Too many tabs opened",
+        message: content,
       });
       browser.tabs.remove(tabId.id);
     }
 
     updateBadge(length);
-
   });
 }
 
@@ -45,13 +66,13 @@ function updateCount(tabId, isOnRemoved) {
 Display tab count on badge and switch color depending on how close user is to maxTabs limit.
 */
 function updateBadge(length) {
-  browser.browserAction.setBadgeText({text: length.toString()});
+  browser.browserAction.setBadgeText({ text: length.toString() });
   if (length > maxTabs * 0.7) {
-    browser.browserAction.setBadgeBackgroundColor({'color': 'red'});
+    browser.browserAction.setBadgeBackgroundColor({ color: "red" });
   } else if (length > maxTabs * 0.3) {
-    browser.browserAction.setBadgeBackgroundColor({'color': 'yellow'});
+    browser.browserAction.setBadgeBackgroundColor({ color: "yellow" });
   } else {
-    browser.browserAction.setBadgeBackgroundColor({'color': 'green'});
+    browser.browserAction.setBadgeBackgroundColor({ color: "green" });
   }
 }
 
@@ -91,11 +112,13 @@ function retrievedMaxTabs(value) {
 }
 
 function setMaxTabsDefaultValue() {
-  maxTabsDefault = 50;
+  maxTabsDefault = 25;
   maxTabs = maxTabsDefault;
-  browser.storage.local.set({
-    "maxTabs": maxTabsDefault
-  }).then(savedSuccessfully, onSaveError);
+  browser.storage.local
+    .set({
+      maxTabs: maxTabsDefault,
+    })
+    .then(savedSuccessfully, onSaveError);
 }
 
 /*
@@ -103,8 +126,7 @@ Retrieve the value of maxTabs from storage and update the UI accordingly.
 */
 function retrieveMaxTabsValue() {
   browser.storage.local.get("maxTabs").then(retrievedMaxTabs, onError);
-  browser.tabs.query({})
-  .then((tabs) => {
+  browser.tabs.query({}).then((tabs) => {
     let length = tabs.length;
     updateBadge(length);
   });
@@ -113,11 +135,11 @@ function retrieveMaxTabsValue() {
 /*
 Listen to when user adds or removes tabs.
 */
-browser.tabs.onRemoved.addListener(
-  (tabId) => { updateCount(tabId, true);
+browser.tabs.onRemoved.addListener((tabId) => {
+  updateCount(tabId, true);
 });
-browser.tabs.onCreated.addListener(
-  (tabId) => { updateCount(tabId, false);
+browser.tabs.onCreated.addListener((tabId) => {
+  updateCount(tabId, false);
 });
 updateCount();
 
